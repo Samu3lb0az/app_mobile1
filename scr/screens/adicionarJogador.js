@@ -1,11 +1,12 @@
 // Samuel Boaz de Morais Gonçalves
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { getFirestore, collection, addDoc, Timestamp } from "firebase/firestore";
 import { LinearGradient } from 'expo-linear-gradient';
 import { app } from '../../firebaseConfig';
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 
 const db = getFirestore(app);
 
@@ -15,40 +16,72 @@ const AdicionarJogador = ({ navigation }) => {
   const [camisa, setCamisa] = useState('');
   const [nascimento, setNascimento] = useState('');
 
+  useEffect(() => {
+    const subscription = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        console.log("Notificação recebida:", notification);
+      }
+    );
+    return () => subscription.remove();
+  }, []);
+
+  const requestedNotificationPermission = async () => {
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Permissão negada",
+        "Ative as notificações para ver os avisos."
+      );
+      return false;
+    }
+    return true;
+  };
+
   const handleAdd = async () => {
     if (!nome || !altura || !camisa || !nascimento) {
       Alert.alert("Erro", "Preencha todos os campos");
       return;
     }
-  
+
+    const temPermissao = await requestedNotificationPermission();
+    if (!temPermissao) return;
+
     try {
       const [day, month, year] = nascimento.split('/');
       if (!day || !month || !year) throw new Error("Data inválida");
-  
+
       const nascimentoDate = new Date(`${year}-${month}-${day}`);
       if (isNaN(nascimentoDate.getTime())) throw new Error("Data inválida");
-  
+
       const nascimentoTimestamp = Timestamp.fromDate(nascimentoDate);
-  
+
       const jogador = {
         nome,
         altura: parseFloat(altura),
         camisa: parseInt(camisa),
         nascimento: nascimentoTimestamp,
       };
-  
-      console.log("Salvando jogador:", jogador); // ← Veja no console do Metro
-  
+
+      console.log("Salvando jogador:", jogador);
+
       await addDoc(collection(db, "real-madrid"), jogador);
-  
-      Alert.alert("Sucesso", "Jogador adicionado!");
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "Novo Jogador Adicionado! 🎉",
+          body: `${nome} foi cadastrado no sistema`,
+          data: { jogador },
+        },
+        trigger: { seconds: 2 },
+      });
+
       navigation.goBack();
+
     } catch (error) {
       console.error("Erro ao adicionar jogador:", error);
       Alert.alert("Erro", "Não foi possível adicionar o jogador. Verifique os dados.");
     }
   };
-  
 
   return (
     <LinearGradient colors={["#2196F3", "#0D47A1"]} style={styles.container}>
